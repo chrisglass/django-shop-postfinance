@@ -2,7 +2,8 @@ from django.conf import settings
 from django.conf.urls.defaults import patterns, url, include
 from django.http import HttpResponseBadRequest, HttpResponse
 from django.shortcuts import render_to_response
-from shop_postfinance.utils import security_check
+from shop_postfinance.forms import PostfinanceForm
+from shop_postfinance.utils import security_check, compute_security_checksum
 
 
 class OffsitePostfinanceBackend(object):
@@ -16,12 +17,13 @@ class OffsitePostfinanceBackend(object):
     def __init__(self, shop):
         self.shop = shop
         assert settings.POSTFINANCE_SECRET_KEY, 'You need to define a POSTFINANCE_SECRET_KEY="..." setting in your settings file.'
+        assert settings.POSTFINANCE_PSP_ID, 'Please define a POSTFINANCE_PSP_ID="..." setting in your settings file.'
         
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='postfinance' ),
-            url(r'^success$', self.paypal_successful_return_view, name='paypal_success' ),
-            url(r'^/somethinghardtoguess/instantpaymentnotification/$', include('paypal.standard.ipn.urls')),
+            url(r'^success$', self.postfinance_return_successful_view, name='postfinance_success' ),
+            url(r'^/somethinghardtoguess/instantpaymentnotification/$', self.postfinance_ipn, 'postfinance_ipn'),
         )
         return urlpatterns
     
@@ -35,14 +37,30 @@ class OffsitePostfinanceBackend(object):
         a reference to the shop interface
         '''
         order = self.shop.get_order(request)
-        #TODO: Do the postfinance dance here. 
+        order_id = self.shop.get_order_unique_id(order)
+        amount = self.shop.get_order_total(order)
+        currency = 'chf'
+        language = 'de_CH'
+        pspid = settings.POSTFINANCE_PSP_ID
         
+        postfinance_dict = {
+            'PSPID': settings.POSTFINANCE_PSP_ID ,
+            'orderID': order_id,
+            'amount': amount,
+            'bgcolor': '#FFFFFF', # TODO: Make this selectable
+            'currency': currency,
+            'language': language,
+            'SHASign': compute_security_checksum(amount, currency, language, 
+                                                 order_id, pspid),
+        }
         # Create the instance.
-        #form = PayPalPaymentsForm(initial=paypal_dict)
-        #context = {"form": form}
-        context = {}
+        
+        form = PostfinanceForm(initial=postfinance_dict)
+        context = {'form': form}
         return render_to_response("payment.html", context)
     
+    def postfinance_return_successful_view(self, request):
+        return HttpResponse()
     
     def postfinance_ipn(self, request):
         """
@@ -81,9 +99,7 @@ class OffsitePostfinanceBackend(object):
         # Verify that the info is valid (with the SHA sum)
         valid = security_check(data, settings.POSTFINANCE_SECRET_KEY)
         if valid:
-            
             # TODO: Save order details in the database (with a postfinance model)
-            
             order_id = data['orderID']
             order = self.shop.get_order_for_id(order_id) # Get the order from either the POST or the GET parameters
             transaction_id = data['PAYID']
