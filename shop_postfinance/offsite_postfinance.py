@@ -60,7 +60,7 @@ class OffsitePostfinanceBackend(object):
         return render_to_response("payment.html", context)
     
     def postfinance_return_successful_view(self, request):
-        return HttpResponse()
+        return self.shop.get_finished_url()
     
     def postfinance_ipn(self, request):
         """
