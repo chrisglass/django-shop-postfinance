@@ -2,14 +2,14 @@
 django-shop-postfinance
 ========================
 
-This applicaiton is a postfinance backend for django-SHOP, or any other shop 
+This application is a postfinance backend for django-SHOP, or any other shop 
 system implementing its shop interface.
 
 Usage
 ======
 
 Add this project to your INSTALLED_APPS, and add 
-'shop_ppostfinance.offsite_postfinance.OffsitePostfinanceBackend' to django-SHOP's 
+'shop_postfinance.offsite_postfinance.OffsitePostfinanceBackend' to django-SHOP's 
 SHOP_PAYMENT_BACKENDS setting.
 
 Todo
