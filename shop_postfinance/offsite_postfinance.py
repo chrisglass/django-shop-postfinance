@@ -1,6 +1,7 @@
 from django.conf import settings
-from django.conf.urls.defaults import patterns, url, include
-from django.http import HttpResponseBadRequest, HttpResponse
+from django.conf.urls.defaults import patterns, url
+from django.http import HttpResponseBadRequest, HttpResponse, \
+    HttpResponseRedirect
 from django.shortcuts import render_to_response
 from shop_postfinance.forms import PostfinanceForm
 from shop_postfinance.utils import security_check, compute_security_checksum
@@ -60,7 +61,7 @@ class OffsitePostfinanceBackend(object):
         return render_to_response("payment.html", context)
     
     def postfinance_return_successful_view(self, request):
-        return self.shop.get_finished_url()
+        return HttpResponseRedirect(self.shop.get_finished_url())
     
     def postfinance_ipn(self, request):
         """
