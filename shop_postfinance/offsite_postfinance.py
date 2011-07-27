@@ -4,6 +4,7 @@ from django.http import HttpResponseBadRequest, HttpResponse, \
     HttpResponseRedirect
 from django.shortcuts import render_to_response
 from shop_postfinance.forms import PostfinanceForm
+from shop_postfinance.models import PostfinanceIPN
 from shop_postfinance.utils import security_check, compute_security_checksum
 
 
@@ -100,11 +101,33 @@ class OffsitePostfinanceBackend(object):
         # Verify that the info is valid (with the SHA sum)
         valid = security_check(data, settings.POSTFINANCE_SECRET_KEY)
         if valid:
-            # TODO: Save order details in the database (with a postfinance model)
             order_id = data['orderID']
             order = self.shop.get_order_for_id(order_id) # Get the order from either the POST or the GET parameters
             transaction_id = data['PAYID']
             amount = data['amount']
+            # Create an IPN transaction trace in the database
+            PostfinanceIPN.objects.create(
+                orderID=order_id,
+                currency=order.get('currency', ''),
+                amount=order.get('amount', ''),
+                PM=order.get('PM', ''),
+                ACCEPTANCE=order.get('ACCEPTANCE', ''),
+                STATUS=order.get('STATUS', ''),
+                CARDNO=order.get('CARDNO', ''),
+                CN=order.get('CN', ''),
+                TRXDATE=order.get('TRXDATE', ''),
+                PAYID=order.get('PAYID', ''),
+                NCERROR=order.get('NCERROR', ''),
+                BRAND=order.get('BRAND', ''),
+                IPCTY=order.get('IPCTY', ''),
+                CCCTY=order.get('CCCTY', ''),
+                ECI=order.get('ECI', ''),
+                CVCCheck=order.get('CVCCheck', ''),
+                AAVCheck=order.get('AAVCheck', ''),
+                VC=order.get('VC', ''),
+                IP=order.get('IP', ''),
+                SHASIGNorder =order.get('SHASIGNorder', ''),
+            )
             # This actually records the payment in the shop's database
             self.shop.confirm_payment(order, amount, transaction_id, self.backend_name)
             
