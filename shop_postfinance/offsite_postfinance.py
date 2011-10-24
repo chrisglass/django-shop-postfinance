@@ -1,11 +1,20 @@
+from django import forms
 from django.conf import settings
 from django.conf.urls.defaults import patterns, url
-from django.http import HttpResponseBadRequest, HttpResponse, \
-    HttpResponseRedirect
+from django.core.urlresolvers import reverse
+from django.forms.forms import DeclarativeFieldsMetaclass
+from django.http import (HttpResponseBadRequest, HttpResponse, 
+    HttpResponseRedirect)
 from django.shortcuts import render_to_response
-from shop_postfinance.forms import PostfinanceForm
+from django.utils.translation import get_language
+from shop_postfinance.forms import ValueHiddenInput
 from shop_postfinance.models import PostfinanceIPN
 from shop_postfinance.utils import security_check, compute_security_checksum
+
+
+def absolute_url(request, path):
+    return '%s://%s%s' % ('https' if request.is_secure() else 'http', 
+                          request.get_host(), path)
 
 
 class OffsitePostfinanceBackend(object):
@@ -18,14 +27,45 @@ class OffsitePostfinanceBackend(object):
     
     def __init__(self, shop):
         self.shop = shop
-        assert settings.POSTFINANCE_SECRET_KEY, 'You need to define a POSTFINANCE_SECRET_KEY="..." setting in your settings file.'
-        assert settings.POSTFINANCE_PSP_ID, 'Please define a POSTFINANCE_PSP_ID="..." setting in your settings file.'
-        
+        assert getattr(settings, 'POSTFINANCE_SECRET_KEY', None), 'You need to define a POSTFINANCE_SECRET_KEY="..." setting in your settings file.'
+        assert getattr(settings, 'POSTFINANCE_PSP_ID', None), 'Please define a POSTFINANCE_PSP_ID="..." setting in your settings file.'
+        assert getattr(settings, 'POSTFINANCE_CURRENCY', None), 'Please define a POSTFINANCE_CURRENCY="..." setting in your settings file.'
+        self.extra_data = getattr(settings, 'POSTFINANCE_EXTRA_CONFIGS', {})
+        self.language_conversion_table = getattr(settings, 'POSTFINANCE_RFC5646_CONVERSION_TABLE', {})
+        self.fallback_language = getattr(settings, 'POSTFINANCE_FALLBACK_LANGUAGE', None)
+        if self.fallback_language:
+            # validate
+            errmsg = ('POSTFINANCE_FALLBACK_LANGUAGE setting must be in '
+                'format "xx_YY" where "xx" is a ISO-639-1 code and "YY" a '
+                'ISO-3166 code.')
+            assert self.fallback_language.count('_') == 1, errmsg
+            assert len(self.fallback_language) == 5, errmsg
+            assert self.fallback_language[0].islower(), errmsg
+            assert self.fallback_language[1].islower(), errmsg
+            assert self.fallback_language[2] == '_'
+            assert self.fallback_language[3].isupper(), errmsg
+            assert self.fallback_language[4].isupper(), errmsg
+        else:
+            self.fallback_language = 'de_DE'
+    
+    def _convert_language(self, rfc5646_language_code):
+        """
+        Turn a RFC5646 (http://tools.ietf.org/html/rfc5646) language code into
+        ISO-639-1+ISO-3166 language codes using the
+        POSTFINANCE_RFC5646_CONVERSION_TABLE setting or returns the fallback
+        as defined in POSTFINANCE_FALLBACK_LANGUAGE (or 'de_DE' if None is
+        defined).
+        """
+        found = self.language_conversion_table.get(rfc5646_language_code)
+        if found:
+            return found
+        return self.fallback_language
+
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='postfinance' ),
-            url(r'^success$', self.postfinance_return_successful_view, name='postfinance_success' ),
-            url(r'^/somethinghardtoguess/instantpaymentnotification/$', self.postfinance_ipn, 'postfinance_ipn'),
+            url(r'^success/$', self.postfinance_return_successful_view, name='postfinance_success' ),
+            url(r'^somethinghardtoguess/instantpaymentnotification/$', self.postfinance_ipn, 'postfinance_ipn'),
         )
         return urlpatterns
     
@@ -41,23 +81,29 @@ class OffsitePostfinanceBackend(object):
         order = self.shop.get_order(request)
         order_id = self.shop.get_order_unique_id(order)
         amount = self.shop.get_order_total(order)
-        currency = 'chf'
-        language = 'de_CH'
-        pspid = settings.POSTFINANCE_PSP_ID
+        currency = settings.POSTFINANCE_CURRENCY.upper()
+        language = self._convert_language(get_language())
+        
+        amount = str(int(amount * 100))
         
         postfinance_dict = {
             'PSPID': settings.POSTFINANCE_PSP_ID ,
             'orderID': order_id,
             'amount': amount,
-            'bgcolor': '#FFFFFF', # TODO: Make this selectable
             'currency': currency,
             'language': language,
-            'SHASign': compute_security_checksum(amount, currency, language, 
-                                                 order_id, pspid),
+            'ACCEPTURL': absolute_url(request, reverse('postfinance_success')),
+            'CANCELURL': absolute_url(request, reverse('cart_delete')),
         }
-        # Create the instance.
+        postfinance_dict.update(self.extra_data)
+        postfinance_dict['SHASign'] = compute_security_checksum(**postfinance_dict)
         
-        form = PostfinanceForm(initial=postfinance_dict)
+        fields = {}
+        for key in postfinance_dict:
+            fields[key] = forms.CharField(widget=ValueHiddenInput())
+        
+        form_class = DeclarativeFieldsMetaclass('PostfinanceForm', (forms.Form,), fields)
+        form = form_class(initial=postfinance_dict)
         context = {'form': form}
         return render_to_response("payment.html", context)
     

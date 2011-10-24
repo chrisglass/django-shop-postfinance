@@ -39,22 +39,12 @@ def security_check(data, secret_key):
     return hex == original
 
 
-def compute_security_checksum(amount, currency, language, order_id, pspid, **kwargs):
+def compute_security_checksum(**data):
     ''' Used to send a security checksum of parameters to postfinance '''
-    key = settings.POSTFINANCE_SECRET_KEY
-    amount = "%.0f" % (amount*100)
-    basic = {
-        'AMOUNT': amount,
-        'CURRENCY': currency,
-        'LANGUAGE': language,
-        'ORDERID': order_id,
-        'PSPID': pspid,
-    }
-    #hash_string =  "AMOUNT=%s%sCURRENCY=%s%sLANGUAGE=%s%sORDERID=%s%sPSPID=%s%s" % (amount, key, currency, key, language, key, order_id, key, pspid, key)
-    basic.update(kwargs)
+    secret_key = settings.POSTFINANCE_SECRET_KEY
+    contents = dict([(key.upper(), value) for key, value in data.items()])
     hash_string = ""
-    for kwargskey, value in sorted(basic.items()):
-        hash_string += "%s=%s%s" % (kwargskey, value, key)
-    s = hashlib.sha1()
-    s.update(hash_string)
-    return s.hexdigest()
+    for key, value in sorted(contents.items()):
+        hash_string += "%s=%s%s" % (key, value, secret_key)
+    output = hashlib.sha1(hash_string).hexdigest().upper()
+    return output
