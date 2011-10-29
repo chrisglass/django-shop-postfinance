@@ -6,6 +6,7 @@ from django.forms.forms import DeclarativeFieldsMetaclass
 from django.http import (HttpResponseBadRequest, HttpResponse, 
     HttpResponseRedirect)
 from django.shortcuts import render_to_response
+from django.template.context import RequestContext
 from django.utils.translation import get_language
 from shop_postfinance.forms import ValueHiddenInput
 from shop_postfinance.models import PostfinanceIPN
@@ -104,7 +105,7 @@ class OffsitePostfinanceBackend(object):
         
         form_class = DeclarativeFieldsMetaclass('PostfinanceForm', (forms.Form,), fields)
         form = form_class(initial=postfinance_dict)
-        context = {'form': form}
+        context = RequestContext(request, {'form': form})
         return render_to_response("payment.html", context)
     
     def postfinance_return_successful_view(self, request):
