@@ -66,7 +66,7 @@ class OffsitePostfinanceBackend(object):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='postfinance' ),
             url(r'^success/$', self.postfinance_return_successful_view, name='postfinance_success' ),
-            url(r'^somethinghardtoguess/instantpaymentnotification/$', self.postfinance_ipn, 'postfinance_ipn'),
+            url(r'^somethinghardtoguess/instantpaymentnotification/$', self.postfinance_ipn, name='postfinance_ipn'),
         )
         return urlpatterns
     
